@@ -25,7 +25,7 @@ GPU Switcher lists running applications, shows which GPU they used during a shor
 
 - Windows 10 version 1803 or later, or Windows 11
 - Two or more GPUs for switching to be useful
-- .NET 10 SDK to build or run from source; the self-contained release executable does not require a separate .NET installation
+- [.NET 10 Desktop Runtime (x64)](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) to run the release executable, or the .NET 10 SDK to build and run from source
 
 Preferences are saved for the current Windows user. Administrator access is not required.
 
@@ -47,9 +47,9 @@ From the repository root on Windows:
 dotnet publish .\GpuSwitcher\GpuSwitcher.csproj -c Release -p:PublishProfile=SingleFileWinX64 -o .\dist\win-x64
 ```
 
-The resulting `dist\win-x64\GpuSwitcher.exe` is the only file you need to distribute. It includes the .NET runtime, so users do not need to install .NET separately. On launch, .NET extracts native runtime components into the current user's temporary directory. The `dist` directory is ignored by Git; build outputs are not part of the source repository.
+The resulting `dist\win-x64\GpuSwitcher.exe` is the only file you need to distribute. It does not include .NET. If the .NET 10 Desktop Runtime is missing, the .NET host shows a download prompt. The `dist` directory is ignored by Git; build outputs are not part of the source repository.
 
-The release also retains a folder ZIP as an alternative. GPU Switcher builds are currently unsigned, so [Windows Smart App Control](https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview) may block an unfamiliar executable. Broadly trusted distribution of the single EXE requires code signing.
+GPU Switcher builds are currently unsigned, so [Windows Smart App Control](https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview) may block an unfamiliar executable. Broadly trusted distribution requires code signing.
 
 ## How it works and what to expect
 
