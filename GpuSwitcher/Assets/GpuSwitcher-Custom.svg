@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#30244E"/>
+      <stop offset="1" stop-color="#17142B"/>
+    </linearGradient>
+    <linearGradient id="chip" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5C4C8F"/>
+      <stop offset="1" stop-color="#353461"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="50" fill="url(#tile)" stroke="#B395F5" stroke-width="8"/>
+  <g fill="#BBA0F7">
+    <rect x="79" y="36" width="16" height="30" rx="5"/>
+    <rect x="120" y="36" width="16" height="30" rx="5"/>
+    <rect x="161" y="36" width="16" height="30" rx="5"/>
+    <rect x="79" y="190" width="16" height="30" rx="5"/>
+    <rect x="120" y="190" width="16" height="30" rx="5"/>
+    <rect x="161" y="190" width="16" height="30" rx="5"/>
+    <rect x="36" y="79" width="30" height="16" rx="5"/>
+    <rect x="36" y="120" width="30" height="16" rx="5"/>
+    <rect x="36" y="161" width="30" height="16" rx="5"/>
+    <rect x="190" y="79" width="30" height="16" rx="5"/>
+    <rect x="190" y="120" width="30" height="16" rx="5"/>
+    <rect x="190" y="161" width="30" height="16" rx="5"/>
+  </g>
+  <rect x="56" y="56" width="144" height="144" rx="28" fill="url(#chip)" stroke="#D2BCFF" stroke-width="9"/>
+  <circle cx="128" cy="128" r="37" fill="none" stroke="#F9F5FF" stroke-width="12"/>
+  <circle cx="128" cy="128" r="11" fill="#F9F5FF"/>
+  <path d="M128 75v25 M128 156v25 M75 128h25 M156 128h25" fill="none" stroke="#F9F5FF" stroke-width="11" stroke-linecap="round"/>
+</svg>

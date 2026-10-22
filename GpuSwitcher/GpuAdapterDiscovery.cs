@@ -2,7 +2,8 @@ using System.Runtime.InteropServices;
 
 namespace GpuSwitcher;
 
-internal sealed record GpuAdapter(long Luid, string Name, int WindowsIndex, bool IsHighPerformance);
+internal sealed record GpuAdapter(long Luid, string Name, int WindowsIndex,
+    bool IsHighPerformance, bool IsPowerSaving, string? RegistryId);
 
 internal static unsafe class GpuAdapterDiscovery
 {
@@ -14,7 +15,8 @@ internal static unsafe class GpuAdapterDiscovery
         Marshal.ThrowExceptionForHR(CreateDXGIFactory1(in Factory6Id, out var factory));
         try
         {
-            var highPerformanceLuid = GetFirstHighPerformanceLuid(factory);
+            var highPerformanceLuid = GetFirstPreferredLuid(factory, 2);
+            var powerSavingLuid = GetFirstPreferredLuid(factory, 1);
             var adapters = new List<GpuAdapter>();
             var enumerate = (delegate* unmanaged[Stdcall]<nint, uint, nint*, int>)Method(factory, 12);
             for (uint index = 0; index < 32; index++)
@@ -26,8 +28,11 @@ internal static unsafe class GpuAdapterDiscovery
                     var desc = Describe(adapter);
                     var name = new string(desc.Description).TrimEnd('\0');
                     if (name.Contains("Basic Render Driver", StringComparison.OrdinalIgnoreCase)) continue;
+                    var registryId = desc.VendorId == 0 || desc.DeviceId == 0 ? null
+                        : $"{desc.VendorId:X4}&{desc.DeviceId:X4}&{desc.SubSysId:X8}";
                     adapters.Add(new GpuAdapter(desc.AdapterLuid, name, (int)index,
-                        desc.AdapterLuid == highPerformanceLuid));
+                        desc.AdapterLuid == highPerformanceLuid,
+                        desc.AdapterLuid == powerSavingLuid, registryId));
                 }
                 finally { Marshal.Release(adapter); }
             }
@@ -36,12 +41,12 @@ internal static unsafe class GpuAdapterDiscovery
         finally { Marshal.Release(factory); }
     }
 
-    private static long GetFirstHighPerformanceLuid(nint factory)
+    private static long GetFirstPreferredLuid(nint factory, uint preference)
     {
         var enumerate = (delegate* unmanaged[Stdcall]<nint, uint, uint, Guid*, nint*, int>)Method(factory, 29);
         var adapterId = AdapterId;
         nint adapter = 0;
-        if (enumerate(factory, 0, 2, &adapterId, &adapter) < 0) return long.MinValue;
+        if (enumerate(factory, 0, preference, &adapterId, &adapter) < 0) return long.MinValue;
         try { return Describe(adapter).AdapterLuid; }
         finally { Marshal.Release(adapter); }
     }

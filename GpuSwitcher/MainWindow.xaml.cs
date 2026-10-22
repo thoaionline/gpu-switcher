@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace GpuSwitcher;
@@ -8,13 +9,17 @@ public partial class MainWindow : Window
 {
     private IReadOnlyList<GpuAdapter> _adapters = [];
     private IReadOnlyList<ProcessRow> _rows = [];
+    private GpuTarget _target = GpuTarget.HighPerformance();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMinutes(1) };
     private bool _busy;
     private bool _loadingStartupSetting = true;
+    private bool _updatingTargets;
+    private int? _iconPreferenceCode;
 
     public MainWindow()
     {
         InitializeComponent();
+        UpdateTargetChoices();
         _timer.Tick += async (_, _) => await RunAutoCycleAsync();
         UndoButton.IsEnabled = GpuPreferences.CanUndo;
         try { LaunchAtStartupToggle.IsChecked = StartupPreferences.IsEnabled; }
@@ -51,19 +56,17 @@ public partial class MainWindow : Window
                     activity = new Dictionary<int, IReadOnlyList<GpuActivity>>();
                     warning = ex.Message;
                 }
-                var rows = ProcessScanner.Scan(adapters, activity, selected);
+                var rows = ProcessScanner.Scan(adapters, activity, selected, _target);
                 return (adapters, rows, warning);
             });
             _adapters = result.adapters;
             _rows = result.rows;
+            UpdateTargetChoices();
             PreferredGpuText.Text = _adapters.FirstOrDefault(x => x.IsHighPerformance)?.Name ?? "Unavailable";
             OtherGpusText.Text = string.Join(" · ", _adapters.Where(x => !x.IsHighPerformance)
                 .Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase));
             if (OtherGpusText.Text.Length == 0) OtherGpusText.Text = "None detected";
             CountText.Text = $"{_rows.Count} processes · {_rows.Count(x => x.Eligible)} eligible apps";
-            ApplyAllButton.IsEnabled = _adapters.Count > 1 && _rows.Any(x => x.Eligible && x.Preference != "High performance");
-            AutoSwitchToggle.IsEnabled = _adapters.Count > 1 && _adapters.Any(x => x.IsHighPerformance);
-            UpdateFilter();
             StatusText.Text = result.warning is null
                 ? $"Updated {DateTime.Now:t}. Select apps or apply to all eligible apps."
                 : $"Updated {DateTime.Now:t}. GPU activity unavailable: {result.warning}";
@@ -116,14 +119,15 @@ public partial class MainWindow : Window
     {
         if (_busy || AutoSwitchToggle.IsChecked != true) return;
         if (!await RefreshAsync() || AutoSwitchToggle.IsChecked != true) return;
-        if (_adapters.Count < 2 || !_adapters.Any(x => x.IsHighPerformance))
+        if (!CanApplyTarget)
         {
             AutoSwitchToggle.IsChecked = false;
-            StatusText.Text = "Automatic switching stopped because a High performance GPU is unavailable.";
+            StatusText.Text = "Automatic switching stopped because the selected GPU is unavailable.";
             return;
         }
 
-        var paths = _rows.Where(x => x.Eligible && x.Preference != "High performance")
+        var target = _target;
+        var paths = _rows.Where(x => x.NeedsChange)
             .Select(x => x.Path).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (paths.Length == 0)
         {
@@ -133,15 +137,92 @@ public partial class MainWindow : Window
 
         SetBusy(true);
         ApplyResult? result = null;
-        try { result = await Task.Run(() => GpuPreferences.Apply(paths)); }
+        try { result = await Task.Run(() => GpuPreferences.Apply(paths, target)); }
         catch (Exception ex) { StatusText.Text = $"Automatic switch failed: {ex.Message}"; }
         finally { SetBusy(false); }
 
         if (result is null) return;
         await RefreshAsync();
         StatusText.Text = result.Failures.Count == 0
-            ? $"Auto mode set {result.Changed} app{(result.Changed == 1 ? "" : "s")} to High performance. Restart them to use it."
+            ? $"Auto mode set {result.Changed} app{(result.Changed == 1 ? "" : "s")} to {target.Label}. Restart them to use it."
             : $"Auto mode set {result.Changed} apps; {result.Failures.Count} failed. {result.Failures[0]}";
+    }
+
+    private bool CanApplyTarget => _adapters.Count > 1 && _target.Luid is not null;
+
+    private void UpdateTargetChoices()
+    {
+        var selectedKey = _target.Key;
+        _updatingTargets = true;
+        try
+        {
+            TargetBox.Items.Clear();
+            AddTarget(GpuTarget.HighPerformance(_adapters.FirstOrDefault(x => x.IsHighPerformance)));
+            AddTarget(GpuTarget.PowerSaving(_adapters.FirstOrDefault(x => x.IsPowerSaving)));
+            foreach (var group in _adapters.Where(x => x.RegistryId is not null)
+                .GroupBy(x => x.RegistryId!, StringComparer.OrdinalIgnoreCase))
+            {
+                var adapter = group.First();
+                var duplicateName = _adapters.Any(x => x.RegistryId != adapter.RegistryId
+                    && string.Equals(x.Name, adapter.Name, StringComparison.OrdinalIgnoreCase));
+                AddTarget(GpuTarget.Specific(adapter, duplicateName), tooltip: group.Count() > 1
+                    ? $"{adapter.Name}. Windows identifies these adapters by one hardware ID."
+                    : adapter.Name);
+            }
+            var selected = TargetBox.Items.OfType<ComboBoxItem>()
+                .FirstOrDefault(x => x.IsEnabled && (x.Tag as GpuTarget)?.Key == selectedKey)
+                ?? (ComboBoxItem)TargetBox.Items[0];
+            TargetBox.SelectedItem = selected;
+            _target = (GpuTarget)selected.Tag;
+        }
+        finally { _updatingTargets = false; }
+        UpdateTargetState();
+    }
+
+    private void AddTarget(GpuTarget target, bool enabled = true, string? tooltip = null) =>
+        TargetBox.Items.Add(new ComboBoxItem
+        {
+            Content = target.Label,
+            Tag = target,
+            IsEnabled = enabled,
+            ToolTip = tooltip ?? target.Label
+        });
+
+    private async void TargetBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingTargets || TargetBox.SelectedItem is not ComboBoxItem { Tag: GpuTarget target }) return;
+        _target = target;
+        UpdateTargetState();
+        if (AutoSwitchToggle.IsChecked == true) await RunAutoCycleAsync();
+    }
+
+    private void UpdateTargetState()
+    {
+        UpdateTargetIcon();
+        foreach (var row in _rows) row.UpdateTarget(_target, _adapters);
+        _rows = _rows.OrderByDescending(x => x.OnOtherGpu)
+            .ThenByDescending(x => x.NeedsChange)
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+        if (!CanApplyTarget && AutoSwitchToggle.IsChecked == true) AutoSwitchToggle.IsChecked = false;
+        AutoSwitchToggle.IsEnabled = CanApplyTarget;
+        ApplyAllButton.ToolTip = $"Set every eligible app to {_target.Label}";
+        if (ProcessList is not null) UpdateFilter();
+        SetBusy(_busy);
+    }
+
+    private void UpdateTargetIcon()
+    {
+        if (_iconPreferenceCode == _target.PreferenceCode) return;
+        var filename = _target.PreferenceCode switch
+        {
+            1 => "GpuSwitcher-Power.ico",
+            GpuTarget.SpecificPreferenceCode => "GpuSwitcher-Custom.ico",
+            _ => "GpuSwitcher.ico"
+        };
+        var uri = new Uri($"pack://application:,,,/Assets/{filename}");
+        var decoder = BitmapDecoder.Create(uri, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        Icon = decoder.Frames.First(frame => frame.PixelWidth == 32);
+        _iconPreferenceCode = _target.PreferenceCode;
     }
 
     private void UpdateFilter()
@@ -163,7 +244,7 @@ public partial class MainWindow : Window
 
     private void SelectEligible_Click(object sender, RoutedEventArgs e)
     {
-        foreach (var row in _rows.Where(x => x.Eligible && x.Preference != "High performance")) row.Selected = true;
+        foreach (var row in _rows.Where(x => x.NeedsChange)) row.Selected = true;
         StatusText.Text = $"{_rows.Count(x => x.Selected)} apps selected.";
     }
 
@@ -174,18 +255,19 @@ public partial class MainWindow : Window
     }
 
     private async void ApplySelected_Click(object sender, RoutedEventArgs e) =>
-        await ApplyAsync(_rows.Where(x => x.Selected && x.Eligible && x.Preference != "High performance"));
+        await ApplyAsync(_rows.Where(x => x.Selected && x.NeedsChange));
 
     private async void ApplyAll_Click(object sender, RoutedEventArgs e) =>
-        await ApplyAsync(_rows.Where(x => x.Eligible && x.Preference != "High performance"));
+        await ApplyAsync(_rows.Where(x => x.NeedsChange));
 
     private async Task ApplyAsync(IEnumerable<ProcessRow> rows)
     {
         if (_busy) return;
+        var target = _target;
         var paths = rows.Select(x => x.Path).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (paths.Length == 0) { StatusText.Text = "No apps need a preference change."; return; }
         var answer = MessageBox.Show(this,
-            $"Set {paths.Length} app{(paths.Length == 1 ? "" : "s")} to Windows’ High performance GPU?\n\n" +
+            $"Set {paths.Length} app{(paths.Length == 1 ? "" : "s")} to {target.Label}?\n\n" +
             "Running apps may need to be restarted. A backup for Undo will be saved in your user profile.",
             "Apply GPU preference", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes) return;
@@ -193,8 +275,8 @@ public partial class MainWindow : Window
         string? notice = null;
         try
         {
-            var result = await Task.Run(() => GpuPreferences.Apply(paths));
-            notice = $"Saved High performance for {result.Changed} app{(result.Changed == 1 ? "" : "s")}. Restart those apps to apply it.";
+            var result = await Task.Run(() => GpuPreferences.Apply(paths, target));
+            notice = $"Saved {target.Label} for {result.Changed} app{(result.Changed == 1 ? "" : "s")}. Restart those apps to apply it.";
             if (result.Failures.Count > 0) MessageBox.Show(this, string.Join("\n", result.Failures),
                 "Some apps could not be updated", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
@@ -226,8 +308,9 @@ public partial class MainWindow : Window
     private void SetBusy(bool busy)
     {
         _busy = busy;
+        TargetBox.IsEnabled = !busy;
         ApplySelectedButton.IsEnabled = !busy;
-        if (busy) ApplyAllButton.IsEnabled = false;
+        ApplyAllButton.IsEnabled = !busy && CanApplyTarget && _rows.Any(x => x.NeedsChange);
         UndoButton.IsEnabled = !busy && GpuPreferences.CanUndo;
     }
 }

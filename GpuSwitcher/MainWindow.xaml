@@ -102,7 +102,7 @@
                             <Popup Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
                                    AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
                                 <Border Background="#1C2B40" BorderBrush="#49617B" BorderThickness="1"
-                                        CornerRadius="6" Padding="4" MinWidth="{Binding ActualWidth, ElementName=FilterBox}">
+                                        CornerRadius="6" Padding="4" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
                                     <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
                                         <ItemsPresenter/>
                                     </ScrollViewer>
@@ -172,7 +172,12 @@
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock Text="GPU SWITCHER" Foreground="#63D7D1" FontSize="12" FontWeight="Bold" Margin="0,0,0,7"/>
-                <TextBlock Text="Move apps to high performance" FontSize="27" FontWeight="Bold"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Move app to" FontSize="27" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <ComboBox x:Name="TargetBox" Width="380" MinHeight="43" FontSize="23" FontWeight="Bold"
+                              SelectionChanged="TargetBox_SelectionChanged"
+                              AutomationProperties.Name="Target GPU preference"/>
+                </StackPanel>
                 <TextBlock Text="Review running desktop apps, then save their Windows graphics preference in one action."
                            Foreground="{StaticResource Muted}" FontSize="13" Margin="0,8,0,0"/>
             </StackPanel>
@@ -181,8 +186,8 @@
                 <ToggleButton x:Name="AutoSwitchToggle" Content="Auto switch every minute" IsEnabled="False"
                               Checked="AutoSwitchToggle_Checked" Unchecked="AutoSwitchToggle_Unchecked"
                               HorizontalAlignment="Right" Margin="0,0,0,8"
-                              AutomationProperties.Name="Automatically refresh and set eligible apps to High performance every minute"
-                              ToolTip="While this window is open, scan and set newly detected eligible apps to High performance every 60 seconds."/>
+                              AutomationProperties.Name="Automatically refresh and set eligible apps to the selected GPU preference every minute"
+                              ToolTip="While this window is open, scan and set newly detected eligible apps to the selected target every 60 seconds."/>
                 <ToggleButton x:Name="LaunchAtStartupToggle" Content="Launch at startup (minimized)"
                               Checked="LaunchAtStartupToggle_Changed" Unchecked="LaunchAtStartupToggle_Changed"
                               HorizontalAlignment="Right"
@@ -234,7 +239,7 @@
                         <GridViewColumn Header="APPLICATION" Width="190" DisplayMemberBinding="{Binding Name}"/>
                         <GridViewColumn Header="PID" Width="105" DisplayMemberBinding="{Binding Pids}"/>
                         <GridViewColumn Header="GPU OBSERVED" Width="330" DisplayMemberBinding="{Binding Gpu}"/>
-                        <GridViewColumn Header="WINDOWS PREFERENCE" Width="150" DisplayMemberBinding="{Binding Preference}"/>
+                        <GridViewColumn Header="WINDOWS PREFERENCE" Width="225" DisplayMemberBinding="{Binding Preference}"/>
                         <GridViewColumn Header="STATUS" Width="170" DisplayMemberBinding="{Binding Note}"/>
                     </GridView>
                 </ListView.View>
@@ -255,7 +260,7 @@
             <StackPanel Grid.Column="1" Orientation="Horizontal">
                 <Button x:Name="UndoButton" Content="Undo last change" Click="Undo_Click" Margin="0,0,8,0"/>
                 <Button x:Name="ApplySelectedButton" Content="Set selected" Click="ApplySelected_Click" Margin="0,0,8,0"/>
-                <Button x:Name="ApplyAllButton" Content="Set all eligible to High performance" Click="ApplyAll_Click"
+                <Button x:Name="ApplyAllButton" Content="Set all eligible" Click="ApplyAll_Click"
                         Background="#26B6AE" Foreground="#06131D"/>
             </StackPanel>
         </Grid>

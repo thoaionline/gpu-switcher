@@ -16,11 +16,17 @@ internal static class GpuPreferences
         return key?.GetValue(path) as string;
     }
 
-    public static string Label(string? value)
+    public static string Label(string? value, IReadOnlyList<GpuAdapter> adapters)
     {
-        var token = value?.Split(';', StringSplitOptions.TrimEntries)
-            .FirstOrDefault(x => x.StartsWith("GpuPreference=", StringComparison.OrdinalIgnoreCase));
-        return token?.Split('=', 2).LastOrDefault() switch
+        var code = Token(value, "GpuPreference");
+        if (code == GpuTarget.SpecificPreferenceCode.ToString())
+        {
+            var id = Token(value, "SpecificAdapter");
+            var adapter = id is null ? null : adapters.FirstOrDefault(x =>
+                string.Equals(x.RegistryId, id, StringComparison.OrdinalIgnoreCase));
+            return adapter is null ? "Specific GPU (unavailable)" : $"Specific: {adapter.Name}";
+        }
+        return code switch
         {
             "1" => "Power saving",
             "2" => "High performance",
@@ -29,18 +35,25 @@ internal static class GpuPreferences
         };
     }
 
-    public static bool IsHighPerformance(string? value) => Label(value) == "High performance";
+    public static bool Matches(string? value, GpuTarget target)
+    {
+        if (Token(value, "GpuPreference") != target.PreferenceCode.ToString()) return false;
+        var adapterId = Token(value, "SpecificAdapter");
+        return string.Equals(adapterId, target.AdapterId, StringComparison.OrdinalIgnoreCase);
+    }
 
-    public static string WithHighPerformance(string? value)
+    public static string WithTarget(string? value, GpuTarget target)
     {
         var parts = (value ?? "").Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(x => !x.StartsWith("GpuPreference=", StringComparison.OrdinalIgnoreCase))
+            .Where(x => !x.StartsWith("GpuPreference=", StringComparison.OrdinalIgnoreCase)
+                && !x.StartsWith("SpecificAdapter=", StringComparison.OrdinalIgnoreCase))
             .ToList();
-        parts.Add("GpuPreference=2");
+        if (target.AdapterId is not null) parts.Add($"SpecificAdapter={target.AdapterId}");
+        parts.Add($"GpuPreference={target.PreferenceCode}");
         return string.Join(';', parts) + ';';
     }
 
-    public static ApplyResult Apply(IEnumerable<string> paths)
+    public static ApplyResult Apply(IEnumerable<string> paths, GpuTarget target)
     {
         using var key = Registry.CurrentUser.CreateSubKey(RegistryPath, writable: true)
             ?? throw new InvalidOperationException("Could not open your Windows graphics preferences.");
@@ -48,10 +61,10 @@ internal static class GpuPreferences
             .Select(path =>
             {
                 var original = key.GetValue(path) as string;
-                return new PreferenceChange(path, original, WithHighPerformance(original));
+                return new PreferenceChange(path, original, WithTarget(original, target));
             })
             // A recent scan can be stale. Check the saved preference again before any backup or write.
-            .Where(x => !IsHighPerformance(x.Original) && x.Original != x.Applied)
+            .Where(x => !Matches(x.Original, target) && x.Original != x.Applied)
             .ToArray();
         if (changes.Length == 0) return new ApplyResult(0, Array.Empty<string>());
 
@@ -66,6 +79,11 @@ internal static class GpuPreferences
         }
         return new ApplyResult(applied, failures);
     }
+
+    private static string? Token(string? value, string name) => value?
+        .Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+        .LastOrDefault(x => x.StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))?
+        .Split('=', 2).LastOrDefault();
 
     public static bool CanUndo => File.Exists(BackupPath);
 
