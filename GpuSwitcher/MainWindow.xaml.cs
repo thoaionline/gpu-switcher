@@ -10,12 +10,20 @@ public partial class MainWindow : Window
     private IReadOnlyList<ProcessRow> _rows = [];
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMinutes(1) };
     private bool _busy;
+    private bool _loadingStartupSetting = true;
 
     public MainWindow()
     {
         InitializeComponent();
         _timer.Tick += async (_, _) => await RunAutoCycleAsync();
         UndoButton.IsEnabled = GpuPreferences.CanUndo;
+        try { LaunchAtStartupToggle.IsChecked = StartupPreferences.IsEnabled; }
+        catch (Exception ex)
+        {
+            LaunchAtStartupToggle.IsEnabled = false;
+            LaunchAtStartupToggle.ToolTip = $"Could not read Windows startup settings: {ex.Message}";
+        }
+        finally { _loadingStartupSetting = false; }
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -80,6 +88,28 @@ public partial class MainWindow : Window
     {
         _timer.Stop();
         if (IsLoaded) StatusText.Text = "Automatic switching is off.";
+    }
+
+    private void LaunchAtStartupToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingStartupSetting) return;
+        var enabled = LaunchAtStartupToggle.IsChecked == true;
+        try
+        {
+            StartupPreferences.SetEnabled(enabled);
+            StatusText.Text = enabled
+                ? "GPU Switcher will launch minimized when you sign in to Windows."
+                : "GPU Switcher will no longer launch when you sign in to Windows.";
+        }
+        catch (Exception ex)
+        {
+            _loadingStartupSetting = true;
+            try { LaunchAtStartupToggle.IsChecked = StartupPreferences.IsEnabled; }
+            catch { LaunchAtStartupToggle.IsChecked = !enabled; }
+            finally { _loadingStartupSetting = false; }
+            MessageBox.Show(this, ex.Message, "Could not update startup setting",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private async Task RunAutoCycleAsync()

@@ -180,8 +180,14 @@
                 <Button Content="↻  Refresh now" Click="Refresh_Click" HorizontalAlignment="Right" Margin="0,0,0,8"/>
                 <ToggleButton x:Name="AutoSwitchToggle" Content="Auto switch every minute" IsEnabled="False"
                               Checked="AutoSwitchToggle_Checked" Unchecked="AutoSwitchToggle_Unchecked"
+                              HorizontalAlignment="Right" Margin="0,0,0,8"
                               AutomationProperties.Name="Automatically refresh and set eligible apps to High performance every minute"
                               ToolTip="While this window is open, scan and set newly detected eligible apps to High performance every 60 seconds."/>
+                <ToggleButton x:Name="LaunchAtStartupToggle" Content="Launch at startup (minimized)"
+                              Checked="LaunchAtStartupToggle_Changed" Unchecked="LaunchAtStartupToggle_Changed"
+                              HorizontalAlignment="Right"
+                              AutomationProperties.Name="Launch GPU Switcher minimized when signing in to Windows"
+                              ToolTip="Start GPU Switcher minimized when you sign in to this Windows account."/>
             </StackPanel>
         </Grid>
         <Border Grid.Row="1" Background="{StaticResource Panel}" BorderBrush="{StaticResource Border}"
@@ -206,7 +212,7 @@
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <TextBox x:Name="SearchBox" Width="310" HorizontalAlignment="Left" TextChanged="Filter_Changed"
                      ToolTip="Search app names and executable paths"/>
-            <ComboBox x:Name="FilterBox" Grid.Column="1" Width="170" SelectedIndex="0" SelectionChanged="Filter_Changed" Margin="10,0">
+            <ComboBox x:Name="FilterBox" Grid.Column="1" Width="170" SelectedIndex="1" SelectionChanged="Filter_Changed" Margin="10,0">
                 <ComboBoxItem Content="All processes"/><ComboBoxItem Content="Using other GPU"/><ComboBoxItem Content="Eligible apps"/>
             </ComboBox>
             <StackPanel Grid.Column="2" Orientation="Horizontal">
